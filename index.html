@@ -2,32 +2,63 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>黃金礦工 RPG: 傳說獵人</title>
+    <!-- 關鍵：viewport-fit=cover 讓畫面能延伸到瀏海區 -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>黃金礦工 Rogue</title>
     <style>
+        * {
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+        }
+
         body {
             margin: 0;
             padding: 0;
-            background-color: #050505;
+            background-color: #000; /* 黑色背景填充多餘空間 */
+            width: 100vw;
+            height: 100vh;
+            overflow: hidden;
+            font-family: 'Microsoft JhengHei', sans-serif;
             display: flex;
             justify-content: center;
             align-items: center;
-            height: 100vh;
-            overflow: hidden;
-            font-family: 'Segoe UI', 'Microsoft JhengHei', sans-serif;
-            touch-action: none;
-            user-select: none;
         }
 
-        #game-wrapper {
+        /* 縮放容器：移除邊框陰影，讓它融入背景 */
+        #game-container {
             position: relative;
-            box-shadow: 0 0 60px rgba(0,0,0,1);
-            border: 4px solid #3e2723;
-            border-radius: 8px;
             width: 800px;
             height: 600px;
             background: #111;
+            /* 邊框稍微調細，甚至可以考慮移除，這裡保留一點質感 */
+            border: 2px solid #3e2723; 
+            border-radius: 4px;
+            overflow: hidden;
             display: flex;
+            transform-origin: center center;
+            /* 預設隱藏，等 JS 計算好縮放再顯示，避免閃爍 */
+            opacity: 0; 
+            transition: opacity 0.2s;
+        }
+
+        /* 全螢幕按鈕 - 改為半透明懸浮圖示 */
+        #fullscreen-btn {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            z-index: 999;
+            background: rgba(0, 0, 0, 0.5);
+            color: white;
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            font-size: 20px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            cursor: pointer;
+            -webkit-user-select: none;
         }
 
         /* 左側資訊欄 */
@@ -36,10 +67,12 @@
             background: #1a1a1a;
             border-right: 2px solid #3e2723;
             padding: 10px;
-            box-sizing: border-box;
             overflow-y: auto;
             color: #ddd;
             font-size: 14px;
+            z-index: 10;
+            flex-shrink: 0;
+            transition: transform 0.3s ease;
         }
 
         #sidebar h3 {
@@ -50,33 +83,48 @@
             text-align: center;
         }
 
-        .info-card {
-            background: #222;
-            border: 1px solid #444;
-            border-radius: 5px;
-            padding: 8px;
-            margin-bottom: 8px;
-            display: flex;
+        /* 手機版側邊欄切換按鈕 - 優化位置 */
+        #sidebar-toggle {
+            display: none;
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            width: 44px;
+            height: 44px;
+            background: rgba(62, 39, 35, 0.8);
+            border: 2px solid #f1c40f;
+            border-radius: 8px;
+            color: white;
+            font-size: 24px;
+            cursor: pointer;
+            z-index: 100;
+            justify-content: center;
             align-items: center;
-            gap: 10px;
+            backdrop-filter: blur(4px);
         }
-        
-        .info-icon { font-size: 28px; width: 40px; text-align: center; display: block; }
-        .info-details { flex: 1; }
-        .info-name { font-weight: bold; color: #fff; font-size: 13px; }
-        .info-val { color: #2ecc71; font-size: 12px; }
-        .info-effect { color: #e67e22; font-size: 11px; margin-top: 2px; }
+
+        /* 遊戲主畫面區塊 */
+        #main-area {
+            position: relative; 
+            flex: 1; 
+            display: flex; 
+            flex-direction: column;
+            /* width 會由 flex 自動填滿剩餘空間 */
+            height: 100%;
+        }
 
         canvas {
             display: block;
             background: #111;
+            width: 100%;
+            height: 100%;
         }
 
         /* UI 層 */
         #ui-layer {
             position: absolute;
             top: 15px;
-            left: 195px; /* Offset by sidebar */
+            left: 15px;
             right: 15px;
             display: flex;
             justify-content: space-between;
@@ -88,140 +136,137 @@
         }
 
         .ui-box {
-            background: rgba(0, 0, 0, 0.7);
-            padding: 8px 16px;
-            border-radius: 20px;
-            border: 2px solid #5d4037;
+            background: rgba(0, 0, 0, 0.5); /* 半透明 */
+            padding: 5px 12px;
+            border-radius: 15px;
+            border: 1px solid #5d4037;
             display: flex;
             align-items: center;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.5);
+            font-weight: bold;
         }
         
-        .highlight { color: #f1c40f; font-weight: bold; margin-left: 5px; }
-        .hook-count { color: #3498db; font-weight: bold; margin-left: 5px; }
+        .highlight { color: #f1c40f; margin-left: 5px; }
+        .hook-count { color: #3498db; margin-left: 5px; }
 
-        /* 通知與特效 */
+        #boss-hp-container {
+            position: absolute; bottom: 10px; left: 50%; transform: translateX(-50%);
+            width: 70%; height: 20px; background: #111;
+            border: 2px solid #555; border-radius: 10px; display: none; overflow: hidden;
+        }
+        #boss-hp-fill { width: 100%; height: 100%; background: #c0392b; transition: width 0.2s; }
+        #boss-name { position: absolute; top: -25px; left: 0; width: 100%; text-align: center; color: #e74c3c; font-weight: bold; text-shadow: 1px 1px 0 #000; font-size: 16px; }
+
+        .overlay-screen {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(10, 10, 10, 0.95);
+            display: flex; flex-direction: column;
+            justify-content: center; align-items: center;
+            z-index: 20; text-align: center;
+        }
+        .hidden { display: none !important; }
+        
+        .btn {
+            padding: 12px 30px; font-size: 20px;
+            background: #c0392b; color: white;
+            border: none; border-radius: 8px; cursor: pointer; margin-top: 20px;
+            box-shadow: 0 4px 0 #7b241c;
+        }
+        .btn:active { transform: translateY(4px); box-shadow: none; }
+
+        .info-card {
+            background: #222; border: 1px solid #444; border-radius: 5px;
+            padding: 8px; margin-bottom: 8px; display: flex; align-items: center; gap: 10px;
+        }
+        .info-icon { font-size: 28px; width: 40px; text-align: center; }
+        .info-details { flex: 1; }
+        .info-name { font-weight: bold; font-size: 13px; }
+        .info-val { color: #2ecc71; font-size: 12px; }
+        .info-effect { color: #e67e22; font-size: 11px; }
+
+        /* 通知 */
         #notification-area {
-            position: absolute;
-            top: 80px;
-            right: 20px;
-            width: 220px;
-            display: flex;
-            flex-direction: column;
-            gap: 8px;
-            pointer-events: none;
-            z-index: 6;
+            position: absolute; top: 70px; right: 10px; width: 180px;
+            display: flex; flex-direction: column; gap: 5px; pointer-events: none; z-index: 6;
         }
-
         .notif {
-            background: rgba(0,0,0,0.85);
-            color: #fff;
-            padding: 10px;
-            border-radius: 4px;
-            font-size: 14px;
-            border-left: 4px solid #fff;
-            animation: fadeOut 3s forwards;
-            line-height: 1.4;
-            white-space: pre-wrap;
+            background: rgba(0,0,0,0.8); color: #fff; padding: 8px;
+            border-radius: 4px; font-size: 13px; border-left: 4px solid #fff;
+            animation: fadeOut 2.5s forwards; text-align: left;
         }
-        .notif-poison { border-left-color: #2ecc71; }
-        .notif-bleed { border-left-color: #e74c3c; }
-        .notif-turn { border-left-color: #3498db; font-weight: bold; }
-        .notif-hit { border-left-color: #f1c40f; box-shadow: 0 0 10px rgba(241, 196, 15, 0.3); }
-        .notif-miss { border-left-color: #7f8c8d; color: #aaa; }
-        .notif-crit { border-left-color: #ff0000; box-shadow: 0 0 15px rgba(255, 0, 0, 0.5); font-weight: bold; color: #ffcccc; }
-
         @keyframes fadeOut {
             0% { opacity: 0; transform: translateX(20px); }
             10% { opacity: 1; transform: translateX(0); }
             85% { opacity: 1; }
-            100% { opacity: 0; transform: translateY(-20px); }
+            100% { opacity: 0; transform: translateY(-10px); }
         }
+        .notif-poison { border-left-color: #2ecc71; }
+        .notif-bleed { border-left-color: #e74c3c; }
+        .notif-hit { border-left-color: #f1c40f; }
+        .notif-crit { border-left-color: #ff0000; color: #ffcccc; font-weight: bold; }
 
-        /* 覆蓋畫面 */
-        .overlay-screen {
-            position: absolute;
-            top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(10, 10, 10, 0.95);
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-            align-items: center;
-            z-index: 20;
-        }
-
-        /* 礦物發現彈窗 */
-        #discovery-popup {
-            background: rgba(20, 20, 20, 0.98);
-            border: 2px solid #f1c40f;
-            padding: 30px;
-            border-radius: 15px;
-            text-align: center;
-            max-width: 400px;
-            box-shadow: 0 0 50px rgba(241, 196, 15, 0.2);
-            z-index: 30;
-        }
-        .disco-icon { font-size: 80px; margin: 20px 0; display: block; }
-        .disco-stats { color: #2ecc71; font-size: 24px; font-weight: bold; margin: 10px 0; }
-
-        .card-container { display: flex; gap: 20px; margin-top: 30px; }
+        /* 卡片 */
+        .card-container { display: flex; gap: 15px; margin-top: 20px; flex-wrap: wrap; justify-content: center; }
         .card {
-            width: 200px; height: 320px; background: #222;
-            border: 2px solid #555; border-radius: 10px; padding: 15px;
+            width: 150px; height: 240px; background: #222;
+            border: 2px solid #555; border-radius: 10px; padding: 10px;
             display: flex; flex-direction: column; align-items: center;
-            text-align: center; cursor: pointer; position: relative;
-            transition: transform 0.2s;
+            cursor: pointer; position: relative;
         }
-        .card:hover { transform: translateY(-10px); border-color: #f1c40f; }
+        .card-icon { font-size: 36px; margin-bottom: 5px; }
+        .card-title { font-size: 15px; font-weight: bold; margin-bottom: 5px; color: white; }
+        .card-desc { font-size: 12px; color: #ccc; line-height: 1.3; }
         .card-mineral { border-color: #3498db; background: linear-gradient(180deg, #1a2a3a, #000); }
         .card-hook { border-color: #e67e22; background: linear-gradient(180deg, #3a2a1a, #000); }
-        .card-legendary { border-color: #f1c40f; background: linear-gradient(180deg, #3a3a1a, #2c0000); box-shadow: 0 0 15px rgba(241, 196, 15, 0.3); }
+        .card-legendary { border-color: #f1c40f; background: linear-gradient(180deg, #3a3a1a, #2c0000); }
 
-        .card-icon { font-size: 48px; margin-bottom: 15px; }
-        .card-title { font-size: 18px; font-weight: bold; color: #fff; margin-bottom: 10px; }
-        .card-desc { font-size: 14px; color: #ccc; line-height: 1.4; }
-        .card-type { position: absolute; bottom: 10px; font-size: 12px; opacity: 0.6; text-transform: uppercase; }
-
-        .btn {
-            padding: 12px 30px; font-size: 20px;
-            background: #c0392b; color: white;
-            border: none; border-radius: 5px; cursor: pointer; margin-top: 20px;
+        /* 彈窗 */
+        #discovery-popup {
+            background: #1a1a1a; border: 2px solid #f1c40f; padding: 20px;
+            border-radius: 10px; max-width: 300px; width: 85%; text-align: center;
         }
-        .hidden { display: none !important; }
+        .disco-icon { font-size: 60px; margin: 10px 0; display: block; }
+        .disco-stats { color: #2ecc71; font-size: 20px; font-weight: bold; margin: 10px 0; }
 
-        /* Boss 血條容器 */
-        #boss-hp-container {
-            position: absolute; bottom: 20px; left: 50%; transform: translateX(-40%); /* Adjusted for sidebar */
-            width: 500px; height: 24px; background: #111;
-            border: 2px solid #555; border-radius: 12px; display: none; overflow: hidden;
+        /* 手機適配 CSS */
+        @media (max-width: 850px) {
+            #sidebar {
+                position: absolute; left: 0; top: 0; bottom: 0;
+                transform: translateX(-100%);
+                box-shadow: 5px 0 15px rgba(0,0,0,0.9);
+                background: rgba(26, 26, 26, 0.95); /* 微透明背景 */
+                backdrop-filter: blur(5px);
+            }
+            #sidebar.active { transform: translateX(0); }
+            #sidebar-toggle { display: flex; }
+            
+            #main-area { width: 100%; }
+            #ui-layer { left: 60px; font-size: 16px; } 
+            .ui-box { padding: 4px 10px; }
         }
-        #boss-hp-fill { width: 100%; height: 100%; background: #c0392b; transition: width 0.2s; }
-        #boss-name { position: absolute; top: -25px; left: 0; width: 100%; text-align: center; color: #e74c3c; font-weight: bold; text-shadow: 1px 1px 0 #000; }
 
     </style>
 </head>
 <body>
 
-<div id="game-wrapper">
-    <!-- 左側圖鑑 -->
+<div id="fullscreen-btn" onclick="toggleFullScreen()">⛶</div>
+
+<div id="game-container">
+    <div id="sidebar-toggle" onclick="toggleSidebar()">📖</div>
+
     <div id="sidebar">
         <h3>本關礦物</h3>
-        <div id="mineral-list">
-            <!-- JS 注入 -->
-        </div>
+        <div id="mineral-list"></div>
     </div>
 
-    <div style="position: relative; flex: 1;">
-        <canvas id="gameCanvas" width="620" height="600"></canvas> <!-- 寬度減去 Sidebar -->
+    <div id="main-area">
+        <canvas id="gameCanvas" width="620" height="600"></canvas>
         
-        <!-- UI -->
         <div id="ui-layer">
-            <div class="ui-box">分數: <span id="score" class="highlight">0</span></div>
-            <div class="ui-box">關卡: <span id="level" class="highlight">1</span></div>
-            <div class="ui-box" style="border-color: #3498db;">掛鉤: <span id="hooks" class="hook-count">10/10</span></div>
+            <div class="ui-box">分數 <span id="score" class="highlight">0</span></div>
+            <div class="ui-box">關卡 <span id="level" class="highlight">1</span></div>
+            <div class="ui-box" style="border-color: #3498db;">掛鉤 <span id="hooks" class="hook-count">10</span></div>
         </div>
 
-        <!-- Boss UI -->
         <div id="boss-hp-container">
             <div id="boss-name">BOSS</div>
             <div id="boss-hp-fill"></div>
@@ -229,14 +274,13 @@
 
         <div id="notification-area"></div>
 
-        <!-- 新礦物發現彈窗 -->
         <div id="discovery-screen" class="overlay-screen hidden">
             <div id="discovery-popup">
-                <h2 style="color: #3498db; margin: 0;">新礦物圖鑑解鎖！</h2>
-                <div id="disco-icon" class="disco-icon">💎</div>
-                <h3 id="disco-name" style="font-size: 32px; margin: 0;">鑽石</h3>
-                <div id="disco-stats" class="disco-stats">攻擊力: 2000</div>
-                <p id="disco-desc" style="color: #ccc;">稀有且堅硬的寶石，能造成毀滅性的傷害。</p>
+                <h2 style="color: #3498db;">新礦物解鎖！</h2>
+                <div id="disco-icon" class="disco-icon"></div>
+                <h3 id="disco-name" style="font-size: 28px; color:white;"></h3>
+                <div id="disco-stats" class="disco-stats"></div>
+                <p id="disco-desc" style="color: #ccc;"></p>
                 <button class="btn" onclick="game.closeDiscovery()">確認</button>
             </div>
         </div>
@@ -254,103 +298,81 @@
             <button class="btn" onclick="game.start()">開始冒險</button>
         </div>
 
-        <!-- 畫面: 獎勵選擇 -->
         <div id="reward-screen" class="overlay-screen hidden">
-            <h2 id="reward-title" style="color: #f1c40f; margin-bottom: 10px;">戰利品選擇</h2>
-            <p id="reward-subtitle" style="color: #aaa;">只能選擇一張</p>
+            <h2 id="reward-title" style="color: #f1c40f;">戰利品</h2>
+            <p style="color: #aaa;">只能選擇一張</p>
             <div id="card-container" class="card-container"></div>
         </div>
 
-        <!-- 畫面: 遊戲結束 -->
         <div id="game-over-screen" class="overlay-screen hidden">
-            <h1 style="color: #e74c3c;">狩獵結束</h1>
-            <p id="end-reason" style="margin: 10px 0; font-size: 20px;">掛鉤耗盡</p>
-            <p id="final-score" style="font-size: 24px; color: #f1c40f; margin-bottom: 30px;">最終分數: 0</p>
-            <button class="btn" onclick="game.start()">重新開始</button>
+            <h1 style="color: #e74c3c;">結束</h1>
+            <p id="end-reason" style="margin: 10px 0; font-size: 20px; color: #ccc;"></p>
+            <p id="final-score" style="font-size: 24px; color: #f1c40f; margin-bottom: 30px;"></p>
+            <button class="btn" onclick="game.start()">重來</button>
         </div>
     </div>
 </div>
 
 <script>
-    /* ================= 資料設定 ================= */
+    // === 強制縮放邏輯 (Max Size Fix) ===
+    function resizeGame() {
+        const container = document.getElementById('game-container');
+        const baseWidth = 800;
+        const baseHeight = 600;
+        
+        const winWidth = window.innerWidth;
+        const winHeight = window.innerHeight;
+        
+        // 計算能填滿螢幕的最大縮放比例 (不留 5% 邊距)
+        const scale = Math.min(winWidth / baseWidth, winHeight / baseHeight);
+
+        container.style.transform = `scale(${scale})`;
+        container.style.opacity = 1; // 計算完再顯示
+    }
+
+    window.addEventListener('resize', resizeGame);
+    window.addEventListener('load', resizeGame);
+    document.addEventListener('dblclick', (e) => e.preventDefault(), { passive: false });
+
+    function toggleSidebar() { document.getElementById('sidebar').classList.toggle('active'); }
+    function toggleFullScreen() {
+        if (!document.fullscreenElement) document.documentElement.requestFullscreen().catch(e=>{});
+        else if (document.exitFullscreen) document.exitFullscreen();
+    }
+
+    // === 遊戲邏輯 ===
     const MINERALS = {
-        ROCK:    { name: '岩石', val: 100, weight: 5.0, radius: 35, icon: '🪨', unlockLv: 1, desc: '普通的石頭，傷害低但隨處可見。' },
-        COPPER:  { name: '銅礦', val: 300, weight: 2.0, radius: 20, icon: '🟠', unlockLv: 1, desc: '基礎的金屬礦物，重量輕，適合快速攻擊。' },
-        SILVER:  { name: '白銀', val: 500, weight: 2.5, radius: 22, icon: '⚪', unlockLv: 2, desc: '比銅礦更有價值的金屬。' },
-        IRON:    { name: '鐵礦', val: 200, weight: 3.5, radius: 24, icon: '🛡️', unlockLv: 3, desc: '堅硬的鐵礦，雖然不貴但很有份量。' },
-        GOLD:    { name: '黃金', val: 1000, weight: 4.0, radius: 25, icon: '🟡', unlockLv: 4, desc: '閃耀的黃金，能造成可觀的傷害。' },
-        RUBY:    { name: '紅寶石', val: 1500, weight: 1.2, radius: 12, icon: '🔺', unlockLv: 6, desc: '蘊含火焰力量的寶石。' },
-        EMERALD: { name: '祖母綠', val: 1200, weight: 1.3, radius: 14, icon: '🟩', unlockLv: 8, desc: '帶有自然毒素的綠色寶石。' },
-        DIAMOND: { name: '鑽石', val: 2500, weight: 0.8, radius: 10, icon: '💎', unlockLv: 10, desc: '最堅硬的物質，傷害極高且速度快。' }
+        ROCK:    { name: '岩石', val: 100, weight: 5.0, radius: 35, icon: '🪨', unlockLv: 1, desc: '普通的石頭。' },
+        COPPER:  { name: '銅礦', val: 300, weight: 2.0, radius: 20, icon: '🟠', unlockLv: 1, desc: '輕便的金屬。' },
+        SILVER:  { name: '白銀', val: 500, weight: 2.5, radius: 22, icon: '⚪', unlockLv: 2, desc: '有價值的金屬。' },
+        IRON:    { name: '鐵礦', val: 200, weight: 3.5, radius: 24, icon: '🛡️', unlockLv: 3, desc: '堅硬的鐵礦。' },
+        GOLD:    { name: '黃金', val: 1000, weight: 4.0, radius: 25, icon: '🟡', unlockLv: 4, desc: '閃耀的財富。' },
+        RUBY:    { name: '紅寶石', val: 1500, weight: 1.2, radius: 12, icon: '🔺', unlockLv: 6, desc: '火焰之力。' },
+        EMERALD: { name: '祖母綠', val: 1200, weight: 1.3, radius: 14, icon: '🟩', unlockLv: 8, desc: '自然毒素。' },
+        DIAMOND: { name: '鑽石', val: 2500, weight: 0.8, radius: 10, icon: '💎', unlockLv: 10, desc: '最堅硬物質。' }
     };
 
-    const CONFIG = {
-        width: 620, height: 600, groundY: 120, 
-        baseSwingSpeed: 0.02, baseShootSpeed: 8, baseRetractSpeed: 12
-    };
+    const CONFIG = { width: 620, height: 600, groundY: 120, baseSwingSpeed: 0.02, baseShootSpeed: 8, baseRetractSpeed: 12 };
 
-    /* ================= 系統類別 ================= */
-    
     class Game {
         constructor() {
             this.canvas = document.getElementById('gameCanvas');
             this.ctx = this.canvas.getContext('2d');
             this.state = 'MENU';
-            
-            this.score = 0;
-            this.level = 1;
-            this.discoveredMinerals = new Set();
-            this.newDiscoveryQueue = []; // Queue for popups
-            
-            this.maxHookCount = 10;
-            this.currentHooks = 10;
-            
-            this.buffs = {
-                mineralDmg: {},    
-                mineralEffect: {}, 
-                spawnRates: {}, 
-                mineralSize: {}, 
-                extraMineralCount: 0, 
-                hookSize: 1.0,
-                hookSpeed: 1.0,
-                doubleHook: false, 
-                freeHookChance: 0.0,
-                critChance: 0.15
-            };
-
+            this.score = 0; this.level = 1;
+            this.discoveredMinerals = new Set(); this.newDiscoveryQueue = []; 
+            this.maxHookCount = 10; this.currentHooks = 10;
+            this.buffs = { mineralDmg: {}, mineralEffect: {}, spawnRates: {}, mineralSize: {}, extraMineralCount: 0, hookSize: 1.0, hookSpeed: 1.0, doubleHook: false, freeHookChance: 0.0, critChance: 0.15 };
             this.entities = { items: [], monsters: [], damageTexts: [] };
-            this.hooks = [];
-            this.lastTime = 0;
-            this.turnAction = null; 
-            
-            this.bossEffectTimer = 0;
+            this.hooks = []; this.lastTime = 0; this.turnAction = null; this.bossEffectTimer = 0;
         }
 
         start() {
-            this.score = 0;
-            this.level = 1;
-            this.currentHooks = 10;
-            this.maxHookCount = 10;
+            this.score = 0; this.level = 1; this.currentHooks = 10; this.maxHookCount = 10;
             this.discoveredMinerals.clear();
-            
-            this.buffs = {
-                mineralDmg: {}, mineralEffect: {}, spawnRates: {}, mineralSize: {},
-                extraMineralCount: 0,
-                hookSize: 1.0, hookSpeed: 1.0,
-                doubleHook: false, freeHookChance: 0.0,
-                critChance: 0.15
-            };
-
-            // Init spawn rates
-            Object.keys(MINERALS).forEach(k => {
-                this.buffs.spawnRates[k] = 1;
-                this.buffs.mineralSize[k] = 1;
-            });
-
-            // Pre-discover level 1 basics
-            this.discoveredMinerals.add('ROCK');
-            this.discoveredMinerals.add('COPPER');
-
+            this.buffs = { mineralDmg: {}, mineralEffect: {}, spawnRates: {}, mineralSize: {}, extraMineralCount: 0, hookSize: 1.0, hookSpeed: 1.0, doubleHook: false, freeHookChance: 0.0, critChance: 0.15 };
+            Object.keys(MINERALS).forEach(k => { this.buffs.spawnRates[k] = 1; this.buffs.mineralSize[k] = 1; });
+            this.discoveredMinerals.add('ROCK'); this.discoveredMinerals.add('COPPER');
             this.prepareLevel();
             this.loop = this.loop.bind(this);
             requestAnimationFrame(this.loop);
@@ -358,88 +380,50 @@
 
         prepareLevel() {
             document.querySelectorAll('.overlay-screen').forEach(el => el.classList.add('hidden'));
-            
-            this.currentHooks = this.maxHookCount;
-            this.updateUI();
-            this.bossEffectTimer = 0;
-            
+            document.getElementById('sidebar').classList.remove('active');
+            this.currentHooks = this.maxHookCount; this.updateUI(); this.bossEffectTimer = 0;
             this.hooks = [new Hook(CONFIG.width/2, 70)]; 
-            this.generateLevelData();
-            this.updateSidebar();
-
-            // Check for new minerals
+            this.generateLevelData(); this.updateSidebar();
+            
             const currentLevelMinerals = this.entities.items.map(i => i.type);
             const uniqueTypes = [...new Set(currentLevelMinerals)];
-            
             this.newDiscoveryQueue = uniqueTypes.filter(t => !this.discoveredMinerals.has(t));
-            
-            if (this.newDiscoveryQueue.length > 0) {
-                this.showNextDiscovery();
-            } else {
-                this.state = 'PLAYING';
-            }
+            if (this.newDiscoveryQueue.length > 0) this.showNextDiscovery(); else this.state = 'PLAYING';
         }
 
         showNextDiscovery() {
-            if (this.newDiscoveryQueue.length === 0) {
-                document.getElementById('discovery-screen').classList.add('hidden');
-                this.state = 'PLAYING';
-                return;
-            }
-
-            const type = this.newDiscoveryQueue.shift();
-            this.discoveredMinerals.add(type);
+            if (this.newDiscoveryQueue.length === 0) { document.getElementById('discovery-screen').classList.add('hidden'); this.state = 'PLAYING'; return; }
+            const type = this.newDiscoveryQueue.shift(); this.discoveredMinerals.add(type);
             const data = MINERALS[type];
-
             document.getElementById('discovery-screen').classList.remove('hidden');
             document.getElementById('disco-icon').innerText = data.icon;
             document.getElementById('disco-name').innerText = data.name;
-            document.getElementById('disco-stats').innerText = `攻擊力: ${data.val}`;
+            document.getElementById('disco-stats').innerText = `ATK: ${data.val}`;
             document.getElementById('disco-desc').innerText = data.desc;
         }
-
-        closeDiscovery() {
-            this.showNextDiscovery();
-        }
+        closeDiscovery() { this.showNextDiscovery(); }
 
         generateLevelData() {
-            this.entities.items = [];
-            this.entities.monsters = [];
-            this.entities.damageTexts = [];
-
+            this.entities.items = []; this.entities.monsters = []; this.entities.damageTexts = [];
             const isBoss = (this.level % 5 === 0);
-            
-            // Boss 特效 Trigger
-            if (isBoss) {
-                this.bossEffectTimer = 180; // 3 seconds at 60fps
-            }
-
-            // 生成礦物
+            if (isBoss) this.bossEffectTimer = 180; 
             const availableTypes = Object.keys(MINERALS).filter(k => MINERALS[k].unlockLv <= this.level);
             const count = 12 + Math.min(this.level, 8) + this.buffs.extraMineralCount;
-            
             const weightPool = [];
             availableTypes.forEach(type => {
                 let baseWeight = 5;
                 if (MINERALS[type].val > 500) baseWeight = 3;
                 if (MINERALS[type].val > 1000) baseWeight = 1;
                 const finalWeight = baseWeight * (this.buffs.spawnRates[type] || 1);
-                
-                if (finalWeight > 0) {
-                    for(let k=0; k<finalWeight * 10; k++) weightPool.push(type);
-                }
+                if (finalWeight > 0) for(let k=0; k<finalWeight * 10; k++) weightPool.push(type);
             });
-
             if (weightPool.length === 0) weightPool.push('ROCK');
-
             for(let i=0; i<count; i++) {
                 const type = weightPool[Math.floor(Math.random() * weightPool.length)];
                 let x = Math.random() * (CONFIG.width - 60) + 30;
                 let y = CONFIG.groundY + 40 + Math.random() * (CONFIG.height - CONFIG.groundY - 80);
                 this.entities.items.push(new Mineral(type, x, y));
             }
-
-            // 生成怪物
             if (isBoss) {
                 this.entities.monsters.push(new Monster('BOSS', CONFIG.width/2, 200, this.level));
                 document.getElementById('boss-hp-container').style.display = 'block';
@@ -455,71 +439,44 @@
         }
 
         updateSidebar() {
-            const list = document.getElementById('mineral-list');
-            list.innerHTML = '';
-            
+            const list = document.getElementById('mineral-list'); list.innerHTML = '';
             const presentTypes = [...new Set(this.entities.items.map(i => i.type))];
             presentTypes.sort((a,b) => MINERALS[b].val - MINERALS[a].val);
-
             presentTypes.forEach(type => {
                 const data = MINERALS[type];
                 let effectText = '';
                 const effectCode = this.buffs.mineralEffect[type];
-                if (effectCode === 'POISON') effectText = '附帶: 中毒';
-                else if (effectCode === 'BLEED') effectText = '附帶: 流血';
-                
-                // Size Text
+                if (effectCode === 'POISON') effectText = '中毒';
+                else if (effectCode === 'BLEED') effectText = '流血';
                 const sizeMult = this.buffs.mineralSize[type];
-                if (sizeMult > 1.1) effectText += (effectText?' ':'') + '[巨型]';
-                else if (sizeMult < 0.9) effectText += (effectText?' ':'') + '[微型]';
-
-                let dmg = data.val;
-                if (this.buffs.mineralDmg[type]) dmg = Math.floor(dmg * this.buffs.mineralDmg[type]);
-
-                const div = document.createElement('div');
-                div.className = 'info-card';
-                div.innerHTML = `
-                    <div class="info-icon">${data.icon}</div>
-                    <div class="info-details">
-                        <div class="info-name">${data.name}</div>
-                        <div class="info-val">ATK: ${dmg}</div>
-                        ${effectText ? `<div class="info-effect">${effectText}</div>` : ''}
-                    </div>
-                `;
+                if (sizeMult > 1.1) effectText += ' 巨型'; else if (sizeMult < 0.9) effectText += ' 微型';
+                let dmg = Math.floor(data.val * (this.buffs.mineralDmg[type] || 1));
+                const div = document.createElement('div'); div.className = 'info-card';
+                div.innerHTML = `<div class="info-icon">${data.icon}</div><div class="info-details"><div class="info-name">${data.name}</div><div class="info-val">ATK: ${dmg}</div><div class="info-effect">${effectText}</div></div>`;
                 list.appendChild(div);
             });
         }
 
         endTurn() {
             if (this.turnAction) {
-                if (this.turnAction.type === 'CRIT') {
-                    const msg = `🔥 爆擊！取得 [${this.turnAction.mineral}]\n全體轟炸 ${this.turnAction.damage} 點傷害！`;
-                    this.showNotif(msg, "crit");
-                } else if (this.turnAction.type === 'HIT') {
-                    const targetText = this.turnAction.targetName || "怪物";
-                    const msg = `取得 [${this.turnAction.mineral}]！\n對 ${targetText} 造成 ${this.turnAction.damage} 點傷害`;
-                    this.showNotif(msg, "hit");
-                } else {
-                    this.showNotif("空手而歸...", "miss");
-                }
+                let msg = '', type = '';
+                if (this.turnAction.type === 'CRIT') { msg = `🔥 爆擊! [${this.turnAction.mineral}]\n全體 ${this.turnAction.damage} 傷`; type = "crit"; }
+                else if (this.turnAction.type === 'HIT') { msg = `[${this.turnAction.mineral}]\n${this.turnAction.damage} 傷`; type = "hit"; }
+                else { msg = "空手而歸"; type = "miss"; }
+                this.showNotif(msg, type);
                 this.turnAction = null;
-            } else {
-                this.showNotif("回合結束", "turn");
-            }
+            } else { this.showNotif("回合結束", "turn"); }
             
             this.entities.monsters.forEach((m, idx) => {
                 m.processTurn();
-                if (m.dead) {
-                    this.entities.monsters.splice(idx, 1);
-                    this.checkLevelClear();
-                }
+                if (m.dead) { this.entities.monsters.splice(idx, 1); this.checkLevelClear(); }
             });
 
             if (this.currentHooks <= 0 && this.entities.monsters.length > 0) {
                  this.state = 'GAMEOVER';
                  document.getElementById('game-over-screen').classList.remove('hidden');
-                 document.getElementById('end-reason').innerText = "掛鉤耗盡，怪物仍存活";
-                 document.getElementById('final-score').innerText = "最終分數: " + Math.floor(this.score);
+                 document.getElementById('end-reason').innerText = "掛鉤耗盡";
+                 document.getElementById('final-score').innerText = "分: " + Math.floor(this.score);
             }
         }
 
@@ -534,42 +491,21 @@
             const screen = document.getElementById('reward-screen');
             const container = document.getElementById('card-container');
             const title = document.getElementById('reward-title');
-            const subtitle = document.getElementById('reward-subtitle');
+            screen.classList.remove('hidden'); container.innerHTML = '';
+            let type = (this.level % 5 === 0) ? 'LEGENDARY' : ((this.level % 3 === 0) ? 'HOOK' : 'MINERAL');
             
-            screen.classList.remove('hidden');
-            container.innerHTML = '';
-
-            let type = 'MINERAL'; 
-            if (this.level % 5 === 0) type = 'LEGENDARY'; 
-            else if (this.level % 3 === 0) type = 'HOOK'; 
-
-            if (type === 'LEGENDARY') {
-                title.innerText = "傳說護符選擇"; title.style.color = "#f1c40f";
-                subtitle.innerText = "Boss 掉落了稀世珍寶...";
-            } else if (type === 'HOOK') {
-                title.innerText = "特殊掛鉤改造"; title.style.color = "#e67e22";
-                subtitle.innerText = "工坊提供了新的技術...";
-            } else {
-                title.innerText = "礦物能力強化"; title.style.color = "#3498db";
-                subtitle.innerText = "針對已發現礦物進行升級...";
-            }
+            if(type==='LEGENDARY'){ title.innerText="傳說護符"; title.style.color="#f1c40f"; }
+            else if(type==='HOOK'){ title.innerText="掛鉤改造"; title.style.color="#e67e22"; }
+            else { title.innerText="能力強化"; title.style.color="#3498db"; }
 
             for(let i=0; i<3; i++) {
                 const cardData = CardGenerator.generate(type, this);
                 const card = document.createElement('div');
                 card.className = `card card-${type.toLowerCase()}`;
                 if (type === 'LEGENDARY') card.classList.add('card-legendary');
-
-                card.innerHTML = `
-                    <div class="card-icon">${cardData.icon}</div>
-                    <div class="card-title">${cardData.name}</div>
-                    <div class="card-desc">${cardData.desc}</div>
-                    <div class="card-type">${type}</div>
-                `;
+                card.innerHTML = `<div class="card-icon">${cardData.icon}</div><div class="card-title">${cardData.name}</div><div class="card-desc">${cardData.desc}</div>`;
                 card.onclick = () => {
-                    cardData.apply(this);
-                    this.level++;
-                    this.prepareLevel();
+                    cardData.apply(this); this.level++; this.prepareLevel();
                 };
                 container.appendChild(card);
             }
@@ -579,495 +515,269 @@
             document.getElementById('score').innerText = Math.floor(this.score);
             document.getElementById('level').innerText = this.level;
             document.getElementById('hooks').innerText = `${this.currentHooks}/${this.maxHookCount}`;
-            
             const boss = this.entities.monsters.find(m => m.type === 'BOSS');
-            if (boss) {
-                const pct = (boss.hp / boss.maxHp) * 100;
-                document.getElementById('boss-hp-fill').style.width = `${Math.max(0, pct)}%`;
-            }
+            if (boss) document.getElementById('boss-hp-fill').style.width = `${Math.max(0, (boss.hp/boss.maxHp)*100)}%`;
         }
 
         loop(timestamp) {
-            const dt = timestamp - this.lastTime;
-            this.lastTime = timestamp;
-
-            if (this.state === 'PLAYING') {
-                this.update(dt);
-                this.draw();
-            }
-
+            const dt = timestamp - this.lastTime; this.lastTime = timestamp;
+            if (this.state === 'PLAYING') { this.update(dt); this.draw(); }
             requestAnimationFrame(this.loop);
         }
 
         update(dt) {
-            // Boss Effect
             if (this.bossEffectTimer > 0) this.bossEffectTimer--;
-
             let allHooksSwing = true;
             this.hooks.forEach(h => {
-                const finished = h.update(); 
+                const finished = h.update();
                 if (finished) this.endTurn();
                 if (h.state !== 'SWING') allHooksSwing = false;
             });
-
             this.entities.damageTexts.forEach((d, i) => {
-                d.update();
-                if (d.life <= 0) this.entities.damageTexts.splice(i, 1);
+                d.update(); if (d.life <= 0) this.entities.damageTexts.splice(i, 1);
             });
         }
 
         draw() {
-            const ctx = this.ctx;
-            ctx.clearRect(0, 0, CONFIG.width, CONFIG.height);
+            const ctx = this.ctx; ctx.clearRect(0, 0, CONFIG.width, CONFIG.height);
+            ctx.fillStyle = '#111'; ctx.fillRect(0, CONFIG.groundY, CONFIG.width, CONFIG.height);
+            ctx.fillStyle = '#050505'; ctx.fillRect(0, 0, CONFIG.width, CONFIG.groundY);
+            ctx.strokeStyle = '#333'; ctx.beginPath(); ctx.moveTo(0, CONFIG.groundY); ctx.lineTo(CONFIG.width, CONFIG.groundY); ctx.stroke();
 
-            // Background
-            ctx.fillStyle = '#111';
-            ctx.fillRect(0, CONFIG.groundY, CONFIG.width, CONFIG.height);
-            ctx.fillStyle = '#050505';
-            ctx.fillRect(0, 0, CONFIG.width, CONFIG.groundY);
-            ctx.strokeStyle = '#333';
-            ctx.beginPath(); ctx.moveTo(0, CONFIG.groundY); ctx.lineTo(CONFIG.width, CONFIG.groundY); ctx.stroke();
-
-            // Shake Effect if Boss Warning
             if (this.bossEffectTimer > 0) {
-                const shake = Math.sin(Date.now() / 20) * 5;
-                ctx.save();
-                ctx.translate(shake, shake);
+                const shake = Math.sin(Date.now() / 20) * 5; ctx.save(); ctx.translate(shake, shake);
             }
-
             this.entities.items.forEach(i => i.draw(ctx));
             this.entities.monsters.forEach(m => m.draw(ctx));
             this.hooks.forEach(h => h.draw(ctx));
             this.entities.damageTexts.forEach(d => d.draw(ctx));
-
             if (this.bossEffectTimer > 0) {
-                ctx.restore();
-                // Boss Warning Overlay
-                ctx.fillStyle = `rgba(255, 0, 0, ${0.3 + Math.sin(Date.now()/100)*0.1})`;
+                ctx.restore(); ctx.fillStyle = `rgba(255, 0, 0, ${0.3 + Math.sin(Date.now()/100)*0.1})`;
                 ctx.fillRect(0, 0, CONFIG.width, CONFIG.height);
-                
-                ctx.save();
-                ctx.fillStyle = '#fff';
-                ctx.font = '900 60px Arial';
-                ctx.textAlign = 'center';
-                ctx.textBaseline = 'middle';
-                ctx.shadowColor = 'red';
-                ctx.shadowBlur = 20;
+                ctx.fillStyle = '#fff'; ctx.font = '900 50px Arial'; ctx.textAlign = 'center';
                 ctx.fillText("WARNING", CONFIG.width/2, CONFIG.height/2);
-                ctx.font = 'bold 30px Arial';
-                ctx.fillText("BOSS APPROACHING", CONFIG.width/2, CONFIG.height/2 + 50);
-                ctx.restore();
             }
         }
 
         handleInput() {
             if (this.state !== 'PLAYING') return;
-
             const ready = this.hooks.every(h => h.state === 'SWING');
-            
             if (ready && this.currentHooks > 0) {
-                if (Math.random() > this.buffs.freeHookChance) {
-                    this.currentHooks--;
-                } else {
-                    this.showNotif("幸運! 不消耗次數", "legendary");
-                }
+                if (Math.random() > this.buffs.freeHookChance) this.showNotif("幸運! 免耗次數", "crit");
+                else this.currentHooks--;
                 this.updateUI();
-
                 if (this.buffs.doubleHook) {
-                    const centerAngle = this.hooks[0].angle;
-                    const h1 = new Hook(CONFIG.width/2, 70);
-                    const h2 = new Hook(CONFIG.width/2, 70);
-                    h1.angle = centerAngle - 0.15; h2.angle = centerAngle + 0.15;
+                    const a = this.hooks[0].angle;
+                    const h1 = new Hook(CONFIG.width/2, 70); h1.angle = a - 0.15;
+                    const h2 = new Hook(CONFIG.width/2, 70); h2.angle = a + 0.15;
                     h1.state = 'SHOOT'; h2.state = 'SHOOT';
                     this.hooks = [h1, h2];
-                } else {
-                    this.hooks.forEach(h => h.state = 'SHOOT');
-                }
+                } else { this.hooks.forEach(h => h.state = 'SHOOT'); }
             } else if (this.currentHooks <= 0 && ready) {
-                this.showNotif("沒有掛鉤了!", "bleed");
+                this.showNotif("沒掛鉤了!", "bleed");
             }
         }
 
         showNotif(text, type) {
             const area = document.getElementById('notification-area');
-            const el = document.createElement('div');
-            el.className = `notif notif-${type}`;
-            el.innerText = text;
-            area.appendChild(el);
-            setTimeout(() => el.remove(), 2000);
+            const el = document.createElement('div'); el.className = `notif notif-${type}`; el.innerText = text;
+            area.appendChild(el); setTimeout(() => el.remove(), 2500);
         }
     }
 
-    /* ================= 遊戲物件類別 ================= */
-
     class Hook {
         constructor(x, y) {
-            this.x = x; this.y = y;
-            this.angle = Math.PI / 2;
-            this.length = 20;
-            this.state = 'SWING';
-            this.dir = 1;
-            this.grabbed = null;
+            this.x = x; this.y = y; this.angle = Math.PI / 2; this.length = 20;
+            this.state = 'SWING'; this.dir = 1; this.grabbed = null;
         }
-
         update() {
-            // 速度邏輯修正：
-            // 1. 關卡難度倍率：每多一關，擺動速度增加 5% (level 10 = 1.5倍速, level 20 = 2倍速)
-            const levelRate = 1 + (game.level * 0.05);
-            // 2. 玩家 Buff 倍率：來自卡片升級
-            const buffRate = game.buffs.hookSpeed;
-            
-            let justFinished = false;
-
+            const lr = 1 + (game.level * 0.05); const br = game.buffs.hookSpeed;
+            let finished = false;
             if (this.state === 'SWING') {
-                // 擺動速度：隨關卡越後面越快 (增加瞄準難度)
-                this.angle += CONFIG.baseSwingSpeed * this.dir * buffRate * levelRate;
+                this.angle += CONFIG.baseSwingSpeed * this.dir * br * lr;
                 if (this.angle < 0.1 || this.angle > Math.PI - 0.1) this.dir *= -1;
                 this.length = 20;
             } else if (this.state === 'SHOOT') {
-                // 發射速度：主要受 Buff 影響，但給予極微幅的關卡補償 (每關+1%) 保持節奏
-                this.length += CONFIG.baseShootSpeed * buffRate * (1 + game.level * 0.01);
-                if (this.length > 800 || this.checkBoundaries()) {
-                    this.state = 'RETRACT';
-                } else {
-                    this.checkCollision();
-                }
+                this.length += CONFIG.baseShootSpeed * br * (1+game.level*0.01);
+                if (this.length > 800 || this.checkBoundaries()) this.state = 'RETRACT';
+                else this.checkCollision();
             } else if (this.state === 'RETRACT') {
-                let s = CONFIG.baseRetractSpeed * buffRate;
-                if (this.grabbed) {
-                    s = (CONFIG.baseRetractSpeed / this.grabbed.weight) * buffRate;
-                }
+                let s = CONFIG.baseRetractSpeed * br;
+                if (this.grabbed) s = (CONFIG.baseRetractSpeed / this.grabbed.weight) * br;
                 this.length -= s;
-                if (this.length <= 20) {
-                    this.reset();
-                    justFinished = true;
-                }
+                if (this.length <= 20) { this.reset(); finished = true; }
             }
-            return justFinished;
+            return finished;
         }
-
         checkCollision() {
-            const tipX = this.x + Math.cos(this.angle) * this.length;
-            const tipY = this.y + Math.sin(this.angle) * this.length;
-
-            // 碰撞半徑受 hookSize 影響
-            const hitRadius = 5 * game.buffs.hookSize;
-
-            for (let item of game.entities.items) {
-                if (Math.hypot(tipX - item.x, tipY - item.y) < item.radius + hitRadius) {
-                    this.state = 'RETRACT';
-                    this.grabbed = item;
-                    // 從場景移除
-                    game.entities.items = game.entities.items.filter(i => i !== item);
+            const tx = this.x + Math.cos(this.angle) * this.length;
+            const ty = this.y + Math.sin(this.angle) * this.length;
+            const hr = 5 * game.buffs.hookSize;
+            for (let i of game.entities.items) {
+                if (Math.hypot(tx - i.x, ty - i.y) < i.radius + hr) {
+                    this.state = 'RETRACT'; this.grabbed = i;
+                    game.entities.items = game.entities.items.filter(it => it !== i);
                     return;
                 }
             }
         }
-
         checkBoundaries() {
             const tx = this.x + Math.cos(this.angle) * this.length;
             const ty = this.y + Math.sin(this.angle) * this.length;
             return (tx < 0 || tx > CONFIG.width || ty > CONFIG.height);
         }
-
         reset() {
-            this.length = 20;
-            this.state = 'SWING';
-            
+            this.length = 20; this.state = 'SWING';
             if (this.grabbed) {
-                let damage = this.grabbed.data.val;
-                const type = this.grabbed.type;
-                if (game.buffs.mineralDmg[type]) damage *= game.buffs.mineralDmg[type];
-
-                game.score += damage;
-                
-                const critRate = game.buffs.critChance || 0.15;
-                const isCrit = Math.random() < critRate;
-
+                let dmg = this.grabbed.data.val;
+                if (game.buffs.mineralDmg[this.grabbed.type]) dmg *= game.buffs.mineralDmg[this.grabbed.type];
+                game.score += dmg;
+                const isCrit = Math.random() < (game.buffs.critChance || 0.15);
                 if (isCrit) {
-                    damage = Math.floor(damage * 1.5);
-                    game.turnAction = {
-                        type: 'CRIT',
-                        mineral: this.grabbed.data.name,
-                        damage: damage,
-                        monsterCount: game.entities.monsters.length
-                    };
-                    game.entities.monsters.forEach(m => {
-                        m.takeDamage(damage, this.grabbed.type, true);
-                    });
+                    dmg = Math.floor(dmg * 1.5);
+                    game.turnAction = { type: 'CRIT', mineral: this.grabbed.data.name, damage: dmg };
+                    game.entities.monsters.forEach(m => m.takeDamage(dmg, this.grabbed.type, true));
                 } else {
                     const targets = game.entities.monsters.filter(m => !m.dead);
                     if (targets.length > 0) {
-                        const target = targets[Math.floor(Math.random() * targets.length)];
-                        target.takeDamage(damage, this.grabbed.type, false);
-                        game.turnAction = {
-                            type: 'HIT',
-                            mineral: this.grabbed.data.name,
-                            damage: damage,
-                            targetName: target.type === 'BOSS' ? 'BOSS' : '怪物'
-                        };
+                        const t = targets[Math.floor(Math.random() * targets.length)];
+                        t.takeDamage(dmg, this.grabbed.type, false);
+                        game.turnAction = { type: 'HIT', mineral: this.grabbed.data.name, damage: dmg };
                     } else {
-                        game.turnAction = {
-                            type: 'HIT',
-                            mineral: this.grabbed.data.name,
-                            damage: 0,
-                            targetName: '虛空'
-                        };
+                        game.turnAction = { type: 'HIT', mineral: this.grabbed.data.name, damage: 0 };
                     }
                 }
-
-                this.grabbed = null;
-                game.updateUI();
-            } else {
-                game.turnAction = { type: 'MISS' };
-            }
-
+                this.grabbed = null; game.updateUI();
+            } else { game.turnAction = { type: 'MISS' }; }
             if (game.hooks.length > 1 && game.hooks.every(h => h.state === 'SWING')) {
-                const mainHook = game.hooks[0];
-                mainHook.x = CONFIG.width/2; 
-                game.hooks = [mainHook];
+                const h = game.hooks[0]; h.x = CONFIG.width/2; game.hooks = [h];
             }
         }
-
         draw(ctx) {
             const tx = this.x + Math.cos(this.angle) * this.length;
             const ty = this.y + Math.sin(this.angle) * this.length;
-
             ctx.lineWidth = 3; ctx.strokeStyle = '#aaa';
             ctx.beginPath(); ctx.moveTo(this.x, this.y); ctx.lineTo(tx, ty); ctx.stroke();
-
-            const size = 10 * game.buffs.hookSize;
+            const s = 10 * game.buffs.hookSize;
             ctx.save(); ctx.translate(tx, ty); ctx.rotate(this.angle - Math.PI/2);
-            ctx.beginPath(); ctx.arc(0, 0, size, 0, Math.PI); ctx.stroke();
-            if (this.grabbed) {
-                ctx.rotate(-(this.angle - Math.PI/2)); ctx.translate(0, 15);
-                this.grabbed.x = 0; this.grabbed.y = 0; this.grabbed.draw(ctx);
-            }
-            ctx.restore();
-            ctx.fillStyle = '#f39c12'; ctx.beginPath(); ctx.arc(this.x, this.y, 15, 0, Math.PI*2); ctx.fill();
+            ctx.beginPath(); ctx.arc(0, 0, s, 0, Math.PI); ctx.stroke();
+            if (this.grabbed) { ctx.rotate(-(this.angle - Math.PI/2)); ctx.translate(0, 15); this.grabbed.x=0; this.grabbed.y=0; this.grabbed.draw(ctx); }
+            ctx.restore(); ctx.fillStyle = '#f39c12'; ctx.beginPath(); ctx.arc(this.x, this.y, 15, 0, Math.PI*2); ctx.fill();
         }
     }
 
     class Mineral {
-        constructor(type, x, y) {
-            this.type = type;
-            this.data = MINERALS[type];
-            this.x = x; this.y = y;
-            
-            const sizeMult = game.buffs.mineralSize[type] || 1.0;
-            this.radius = this.data.radius * sizeMult;
-            this.weight = this.data.weight * (sizeMult > 1 ? 1.2 : (sizeMult < 1 ? 0.8 : 1.0));
+        constructor(t, x, y) {
+            this.type = t; this.data = MINERALS[t]; this.x = x; this.y = y;
+            const sm = game.buffs.mineralSize[t] || 1.0;
+            this.radius = this.data.radius * sm;
+            this.weight = this.data.weight * (sm>1?1.2:(sm<1?0.8:1.0));
         }
         draw(ctx) {
-            ctx.save(); 
-            ctx.translate(this.x, this.y);
-            
-            ctx.font = `${this.radius * 1.2}px Arial`;
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
-            
-            ctx.shadowColor = 'rgba(0,0,0,0.5)';
-            ctx.shadowBlur = 5;
-            
-            ctx.fillText(this.data.icon, 0, 0);
-            
-            ctx.restore();
+            ctx.save(); ctx.translate(this.x, this.y);
+            ctx.font = `${this.radius * 1.2}px Arial`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+            ctx.shadowColor = 'rgba(0,0,0,0.5)'; ctx.shadowBlur = 5;
+            ctx.fillText(this.data.icon, 0, 0); ctx.restore();
         }
     }
 
     class Monster {
-        constructor(type, x, y, level) {
-            this.type = type;
-            this.x = x; this.y = y;
-            
-            // 血量計算
-            let base = (type === 'BOSS') ? 2500 : 300; 
-            let scale = (type === 'BOSS') ? 1.4 : 1.1; 
-            
-            this.maxHp = Math.floor(base * Math.pow(scale, Math.floor(level/5)));
-            this.hp = this.maxHp;
-            this.dead = false;
-
-            this.status = { poison: 0, bleed: 0 };
+        constructor(t, x, y, l) {
+            this.type = t; this.x = x; this.y = y;
+            let b = (t === 'BOSS') ? 2500 : 300; let s = (t === 'BOSS') ? 1.4 : 1.1;
+            this.maxHp = Math.floor(b * Math.pow(s, Math.floor(l/5))); this.hp = this.maxHp;
+            this.dead = false; this.status = { poison: 0, bleed: 0 };
         }
-
         processTurn() {
             if (this.dead) return;
-
-            let totalDot = 0;
-            if (this.status.poison > 0) {
-                const poisonDmg = Math.ceil(this.maxHp * 0.02 * this.status.poison);
-                this.hp -= poisonDmg;
-                totalDot += poisonDmg;
-                this.status.poison--;
-            }
-            if (this.status.bleed > 0) {
-                const bleedDmg = 50 * this.status.bleed;
-                this.hp -= bleedDmg;
-                totalDot += bleedDmg;
-                this.status.bleed--;
-            }
-
-            if (totalDot > 0) {
-                game.entities.damageTexts.push(new DamageText("-" + totalDot + " (DOT)", this.x, this.y - 20, "#aaa"));
-                if (this.hp <= 0) {
-                    this.hp = 0;
-                    this.dead = true;
-                }
+            let dot = 0;
+            if (this.status.poison > 0) { dot += Math.ceil(this.maxHp * 0.02 * this.status.poison); this.status.poison--; }
+            if (this.status.bleed > 0) { dot += 50 * this.status.bleed; this.status.bleed--; }
+            if (dot > 0) {
+                this.hp -= dot; game.entities.damageTexts.push(new DamageText(`-${dot}`, this.x, this.y-20, "#aaa"));
+                if (this.hp <= 0) { this.hp = 0; this.dead = true; }
                 if (this.type === 'BOSS') game.updateUI();
             }
         }
-
-        takeDamage(dmg, sourceMineralType, isCrit) {
-            const effect = game.buffs.mineralEffect[sourceMineralType];
-            if (effect) {
-                if (effect === 'POISON') {
-                    this.status.poison += 1;
-                    game.entities.damageTexts.push(new DamageText("中毒堆疊!", this.x, this.y - 40, "#2ecc71"));
-                } else if (effect === 'BLEED') {
-                    this.status.bleed += 1;
-                    game.entities.damageTexts.push(new DamageText("流血堆疊!", this.x, this.y - 40, "#c0392b"));
-                }
-            }
-
-            this.hp -= dmg;
-            
-            const color = isCrit ? "#f1c40f" : "#fff";
-            const fontSize = isCrit ? 36 : 20;
-            game.entities.damageTexts.push(new DamageText(Math.floor(dmg), this.x, this.y, color, fontSize));
-
-            if (this.hp <= 0) {
-                this.hp = 0;
-                this.dead = true;
-            }
-            
+        takeDamage(d, src, crit) {
+            const eff = game.buffs.mineralEffect[src];
+            if (eff === 'POISON') { this.status.poison++; game.entities.damageTexts.push(new DamageText("中毒", this.x, this.y-40, "#2ecc71")); }
+            if (eff === 'BLEED') { this.status.bleed++; game.entities.damageTexts.push(new DamageText("流血", this.x, this.y-40, "#c0392b")); }
+            this.hp -= d;
+            const c = crit ? "#f1c40f" : "#fff"; const sz = crit ? 30 : 20;
+            game.entities.damageTexts.push(new DamageText(d, this.x, this.y, c, sz));
+            if (this.hp <= 0) { this.hp = 0; this.dead = true; }
             if (this.type === 'BOSS') game.updateUI();
         }
-
         draw(ctx) {
             if (this.dead) return;
-            const offset = Math.sin(Date.now()/300) * 5;
-            ctx.save(); ctx.translate(this.x, this.y + offset);
-
-            if (this.status.poison > 0) ctx.fillStyle = '#2ecc71';
-            else if (this.status.bleed > 0) ctx.fillStyle = '#e74c3c';
-            else ctx.fillStyle = (this.type === 'BOSS') ? '#8e44ad' : ((this.type === 'SLIME') ? '#27ae60' : '#7f8c8d');
-
-            if (this.type === 'BOSS') {
-                ctx.scale(2, 2);
-                ctx.beginPath(); ctx.moveTo(0, -20); ctx.lineTo(15, 0); ctx.lineTo(10, 20); ctx.lineTo(-10, 20); ctx.lineTo(-15, 0); ctx.fill();
-                ctx.fillStyle = 'yellow'; ctx.fillRect(-5, -5, 4, 4); ctx.fillRect(1, -5, 4, 4);
-            } else {
-                ctx.beginPath(); ctx.arc(0, 0, 20, 0, Math.PI*2); ctx.fill();
-                ctx.fillStyle = 'black'; ctx.beginPath(); ctx.arc(-8, -5, 3, 0, Math.PI*2); ctx.fill(); ctx.beginPath(); ctx.arc(8, -5, 3, 0, Math.PI*2); ctx.fill();
-            }
+            const off = Math.sin(Date.now()/300) * 5; ctx.save(); ctx.translate(this.x, this.y + off);
+            if (this.status.poison > 0) ctx.fillStyle = '#2ecc71'; else if (this.status.bleed > 0) ctx.fillStyle = '#e74c3c';
+            else ctx.fillStyle = (this.type === 'BOSS') ? '#8e44ad' : ((this.type === 'SLIME')?'#27ae60':'#7f8c8d');
             
-            ctx.fillStyle = '#fff';
-            ctx.font = 'bold 12px Arial';
-            ctx.textAlign = 'center';
-            if (this.type !== 'BOSS') {
-                ctx.fillText(`HP: ${this.hp}/${this.maxHp}`, 0, -30);
-                ctx.fillStyle = 'black'; ctx.fillRect(-20, 30, 40, 5);
-                ctx.fillStyle = 'red'; ctx.fillRect(-20, 30, 40 * (this.hp/this.maxHp), 5);
-            } else {
-                ctx.font = 'bold 8px Arial';
-                ctx.fillText(`HP: ${this.hp}/${this.maxHp}`, 0, -30);
-            }
+            if(this.type==='BOSS'){ ctx.scale(2,2); ctx.beginPath(); ctx.moveTo(0,-20); ctx.lineTo(15,0); ctx.lineTo(10,20); ctx.lineTo(-10,20); ctx.lineTo(-15,0); ctx.fill(); }
+            else { ctx.beginPath(); ctx.arc(0,0,20,0,Math.PI*2); ctx.fill(); }
             
-            if (this.status.poison > 0) {
-                ctx.fillStyle = '#2ecc71'; ctx.font = '10px Arial'; ctx.fillText('☠️'+this.status.poison, 20, -10);
-            }
-            if (this.status.bleed > 0) {
-                ctx.fillStyle = '#e74c3c'; ctx.font = '10px Arial'; ctx.fillText('🩸'+this.status.bleed, 20, 5);
-            }
-
+            ctx.fillStyle='#fff'; ctx.font='bold 12px Arial'; ctx.textAlign='center';
+            if(this.type!=='BOSS') {
+                ctx.fillText(`${this.hp}`, 0, -30);
+                ctx.fillStyle='black'; ctx.fillRect(-20,30,40,5); ctx.fillStyle='red'; ctx.fillRect(-20,30,40*(this.hp/this.maxHp),5);
+            } else { ctx.fillText(`${this.hp}`, 0, -30); }
             ctx.restore();
         }
     }
 
     class DamageText {
-        constructor(text, x, y, color, size = 20) {
-            this.text = text; this.x = x; this.y = y; this.color = color;
-            this.size = size;
-            this.life = 1.0;
-        }
-        update() { this.y -= 0.8; this.life -= 0.02; }
-        draw(ctx) {
-            ctx.save(); ctx.globalAlpha = Math.max(0, this.life);
-            ctx.fillStyle = this.color; ctx.font = `bold ${this.size}px Arial`;
-            ctx.fillText(this.text, this.x, this.y);
-            ctx.restore();
-        }
+        constructor(t, x, y, c, s=20) { this.t = t; this.x = x; this.y = y; this.c = c; this.s = s; this.l = 1.0; }
+        update() { this.y -= 0.8; this.l -= 0.02; }
+        draw(ctx) { ctx.save(); ctx.globalAlpha = Math.max(0, this.l); ctx.fillStyle = this.c; ctx.font = `bold ${this.s}px Arial`; ctx.fillText(this.t, this.x, this.y); ctx.restore(); }
     }
 
     const CardGenerator = {
-        generate(type, gameInstance) {
+        generate(type, game) {
             if (type === 'LEGENDARY') {
                 const list = [
-                    { name: '雙重掛鉤', desc: '一次射出兩個掛鉤，效率加倍，僅消耗 1 次次數', icon: '🔱', apply: (g) => { g.buffs.doubleHook = true; } },
-                    { name: '幸運回收', desc: '射出掛鉤時有 30% 機率不消耗次數', icon: '🍀', apply: (g) => { g.buffs.freeHookChance += 0.3; } },
-                    { name: '豐饒號角', desc: '關卡中的礦物總數增加 5 個', icon: '🌽', apply: (g) => { g.buffs.extraMineralCount += 5; } },
-                    { name: '會心一擊', desc: '爆擊機率 +20%，爆擊傷害再提升', icon: '🎯', apply: (g) => { g.buffs.critChance += 0.2; }}
-                ];
-                return list[Math.floor(Math.random()*list.length)];
+                    { name: '雙重掛鉤', desc: '消耗1次，射出2鉤', icon: '🔱', apply: g => g.buffs.doubleHook = true },
+                    { name: '幸運回收', desc: '30% 機率免耗', icon: '🍀', apply: g => g.buffs.freeHookChance += 0.3 },
+                    { name: '豐饒號角', desc: '礦物 +5', icon: '🌽', apply: g => g.buffs.extraMineralCount += 5 },
+                    { name: '會心一擊', desc: '爆擊 +20%', icon: '🎯', apply: g => g.buffs.critChance += 0.2 }
+                ]; return list[Math.floor(Math.random()*list.length)];
             } else if (type === 'HOOK') {
                 const list = [
-                    { name: '擴充彈匣', desc: '最大掛鉤次數 +5', icon: '🎒', apply: (g) => { g.maxHookCount += 5; } },
-                    { name: '巨型鉤爪', desc: '掛鉤判定範圍加大 50%', icon: '🪝', apply: (g) => { g.buffs.hookSize += 0.5; } },
-                    { name: '液壓馬達', desc: '掛鉤發射與收回速度 +20%', icon: '⚙️', apply: (g) => { g.buffs.hookSpeed *= 1.2; } }
-                ];
-                return list[Math.floor(Math.random()*list.length)];
+                    { name: '擴充彈匣', desc: '最大次數 +5', icon: '🎒', apply: g => g.maxHookCount += 5 },
+                    { name: '巨型鉤爪', desc: '範圍 +50%', icon: '🪝', apply: g => g.buffs.hookSize += 0.5 },
+                    { name: '液壓馬達', desc: '速度 +20%', icon: '⚙️', apply: g => g.buffs.hookSpeed *= 1.2 }
+                ]; return list[Math.floor(Math.random()*list.length)];
             } else {
-                let validKeys = Array.from(gameInstance.discoveredMinerals).filter(k => k !== 'BAG');
-                if (validKeys.length === 0 || (validKeys.length === 1 && validKeys[0] === 'ROCK')) {
-                    validKeys = ['ROCK', 'COPPER']; 
-                }
-
-                const target = validKeys[Math.floor(Math.random()*validKeys.length)];
-                const mName = MINERALS[target].name;
-                
+                let valid = Array.from(game.discoveredMinerals);
+                if (valid.length === 0) valid = ['ROCK', 'COPPER'];
+                const t = valid[Math.floor(Math.random()*valid.length)];
+                const name = MINERALS[t].name;
                 const effects = [
-                    { suffix: '淬毒', desc: '命中賦予中毒 (百分比傷害)', code: 'POISON', icon: '🧪' },
-                    { suffix: '鋸齒', desc: '命中賦予流血 (固定傷害)', code: 'BLEED', icon: '🩸' },
-                    { suffix: '重擊', desc: '傷害 +100%', code: 'DMG', icon: '💥' },
-                    { suffix: '礦脈', desc: '出現頻率大幅增加', code: 'SPAWN', icon: '📈' },
-                    { suffix: '巨型化', desc: '體積變大 50%，容易抓取但變重', code: 'SIZE_UP', icon: '⏫' },
-                    { suffix: '微縮化', desc: '體積縮小 40%，變輕', code: 'SIZE_DOWN', icon: '⏬' },
-                    { suffix: '枯竭', desc: '出現頻率大幅降低', code: 'SPAWN_DOWN', icon: '📉' }
+                    { s: '淬毒', d: '中毒', c: 'POISON', i: '🧪' }, { s: '鋸齒', d: '流血', c: 'BLEED', i: '🩸' },
+                    { s: '重擊', d: '傷+100%', c: 'DMG', i: '💥' }, { s: '礦脈', d: '出現UP', c: 'SPAWN', i: '📈' },
+                    { s: '巨型', d: '變大', c: 'SZ_UP', i: '⏫' }, { s: '枯竭', d: '出現DOWN', c: 'SPAWN_DN', i: '📉' }
                 ];
                 const eff = effects[Math.floor(Math.random()*effects.length)];
-                
                 return {
-                    name: `${mName}${eff.suffix}`, desc: `${mName} ${eff.desc}`, icon: eff.icon,
-                    apply: (g) => {
-                        if (eff.code === 'DMG') {
-                            g.buffs.mineralDmg[target] = (g.buffs.mineralDmg[target] || 1) + 1.0;
-                        } else if (eff.code === 'SPAWN') {
-                            g.buffs.spawnRates[target] = (g.buffs.spawnRates[target] || 1) + 2; 
-                        } else if (eff.code === 'SPAWN_DOWN') {
-                            g.buffs.spawnRates[target] = (g.buffs.spawnRates[target] || 1) * 0.2;
-                        } else if (eff.code === 'SIZE_UP') {
-                            g.buffs.mineralSize[target] = (g.buffs.mineralSize[target] || 1) * 1.5;
-                        } else if (eff.code === 'SIZE_DOWN') {
-                            g.buffs.mineralSize[target] = (g.buffs.mineralSize[target] || 1) * 0.6;
-                        } else {
-                            g.buffs.mineralEffect[target] = eff.code;
-                        }
+                    name: `${name}${eff.s}`, desc: eff.d, icon: eff.i,
+                    apply: g => {
+                        if(eff.c==='DMG') g.buffs.mineralDmg[t]=(g.buffs.mineralDmg[t]||1)+1;
+                        else if(eff.c==='SPAWN') g.buffs.spawnRates[t]=(g.buffs.spawnRates[t]||1)+2;
+                        else if(eff.c==='SPAWN_DN') g.buffs.spawnRates[t]=(g.buffs.spawnRates[t]||1)*0.2;
+                        else if(eff.c==='SZ_UP') g.buffs.mineralSize[t]=(g.buffs.mineralSize[t]||1)*1.5;
+                        else if(eff.c==='SZ_DN') g.buffs.mineralSize[t]=(g.buffs.mineralSize[t]||1)*0.6;
+                        else g.buffs.mineralEffect[t]=eff.c;
                     }
                 };
             }
         }
     };
 
-    /* ================= 啟動 ================= */
     const game = new Game();
-
-    window.addEventListener('keydown', (e) => {
-        if (e.code === 'Space' || e.code === 'ArrowDown') game.handleInput();
-    });
-    
+    window.addEventListener('keydown', e => { if(e.code==='Space'||e.code==='ArrowDown') game.handleInput(); });
     document.getElementById('gameCanvas').addEventListener('mousedown', () => game.handleInput());
-    document.getElementById('gameCanvas').addEventListener('touchstart', (e) => { e.preventDefault(); game.handleInput(); });
+    document.getElementById('gameCanvas').addEventListener('touchstart', e => { e.preventDefault(); game.handleInput(); });
 
 </script>
 </body>
